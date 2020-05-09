@@ -1,0 +1,211 @@
+<TABLE ALIGN=CENTER CELLSPACING=0 CELLPADDING=0 BORDER=0 WIDTH='98%' style="margin-bottom:3em;"><TR>
+
+<TD VALIGN=TOP WIDTH='100%' style="padding-top: 0.5em;"><!-- page content -->
+<div style='margin: 0em auto; width:100%; padding:1em'><div class="wiki"><h1>Cable Modem Puma 6 test</h1></div><style>
+.bl { width:10px; height:10px; float:left; };
+</style>
+
+<script>
+
+var bucket = new Array(200);
+var sequencer = new Array(0);
+var formthreshold;
+var wsp = 'ws';
+var hsp = 'http';
+var wsport = 8888;
+var puma6ws;
+var minms;
+var samples = 0;
+var sequence;
+var i1, i2;
+var start_ms;
+var errors;
+
+function stop() {
+    clearInterval(i1);
+    clearInterval(i2);
+    puma6ws = null;
+    document.getElementById('startbut').disabled = false;
+}
+
+function getms() {
+    return Math.floor(window.performance.now() + 0.5);
+}
+
+function make_color(p) {
+    return percentageToHsl(p, 120, 0);
+}
+
+function percentageToHsl(percentage, hue0, hue1) {
+    var hue = (percentage * (hue1 - hue0)) + hue0;
+    return 'hsl(' + hue + ', 100%, 50%)';
+}
+
+function block(ms, base) {
+    var delta = ms - base;
+    var m;
+    var color;
+
+    if (ms>=100) {
+        m = Math.floor((ms-100)/50);
+        color = '#f00';
+        formthreshold++;
+    } else {
+        color = make_color((ms-base)/(100-base));
+        m = ' ';
+    }
+    return "<div style='background-color:"+color+"' class='bl'>"+m+"</div>";
+}
+
+function show_sequence() {
+    if (minms<100) {
+        var str = "<div style='width:260px; margin-top:1em; height:9em'>";
+        for(var i=0; i<sequencer.length; i++) {
+            str += block(sequencer[i], minms);
+        }
+        str += '</div>';
+        document.getElementById('scatter').innerHTML += str;
+    }
+}
+
+function start() {
+    if (puma6ws) {
+        stop();
+    }
+
+    formthreshold = 0;
+    minms = 999;
+    errors = 0;
+    samples = 0;
+    sequence = 0;
+    start_ms = getms();
+    end_ms = start_ms + Math.max(parseInt(document.getElementById('duration').value), 5) * 1000;
+    document.getElementById('startbut').disabled = true;
+    document.getElementById('errors').innerHTML = '';
+    document.getElementById('time_left').innerHTML = '';
+    document.getElementById('samples').innerHTML = '';
+
+    puma6ws = 1;
+
+    for(var x=0; x<bucket.length; x++) {
+        bucket[x] = 0;
+    }
+
+    i2 = setInterval(function() {
+        if (!document.hasFocus()) {
+            stop();
+            document.getElementById('errors').innerHTML = "Lost browser focus. Stopped<br>";
+            return;
+        }
+
+        if (getms() > end_ms) {
+            stop();
+            document.getElementById('samples').innerHTML = "Samples: "+samples+"<br>";
+            document.getElementById('time_left').innerHTML = 'Tested for: ' + Math.round((end_ms - start_ms)/1000).toString()+"<br>";
+            document.getElementById('scatter').innerHTML += "<br>Finished. Excess red is a concern if most measurements are 50ms or less.";
+            show_sequence();
+            return;
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.ms = getms();
+        xhr.seq = sequence++;
+        sequencer.push(0);
+        xhr.open("GET", "/puma.txt?"+Math.random());
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState && xhr.readyState == 4 && (xhr.status == 404 || xhr.status == 200)) {
+                var ms = getms() - xhr.ms;
+                sequencer[xhr.seq] = ms;
+                if (ms > 100) {
+                    var i = 100;
+                    while(ms > 150) {
+                        i++;
+                        ms -= 50;
+                    }
+                    ms = i;
+                }
+                if (minms > ms)
+                    minms = ms;
+                if (samples>5) {
+                    bucket[ms]++;
+                }
+                samples++;
+            }
+        }
+        xhr.onerror = function() {
+            errors++;
+        }
+        xhr.send("");
+    }, Math.max(parseInt(document.getElementById('interval').value), 20));
+
+    //var ms = Math.floor(1000/document.getElementById('hz').value);
+
+    i1 = setInterval(function() {
+        var html = '';
+        for(var x=minms; x<=120; x++) {
+            var scale=bucket[x];
+            // bucket[x]/(Math.floor(samples/100)+1);
+            if (scale) {
+                var ln = '';
+                if (x >= 100) {
+                    var f = 100;
+                    var t = 149;
+                    var xx = x;
+                    while(xx>100) {
+                        f+=50;
+                        t+=50;
+                        xx--;
+                    }
+                    ln += f+" - "+t+"ms :";
+                } else {
+                    ln += x+"ms : ";
+                }
+                var excess = false;
+                if (scale>64) {
+                    scale=64;
+                    excess=true;
+                }
+                for(var y=0; y<scale; y++)
+                    ln += "x";
+                if (excess)
+                    ln += "&raquo;";
+                ln += "<br>";
+                if (x>=100) {
+                    html += "<span style='color:red'>"+ln+"</span>";
+                } else {
+                    html += ln;
+                }
+            }
+        }
+        document.getElementById('scatter').innerHTML = html;
+        document.getElementById('samples').innerHTML = "Samples: " + samples + "<br>";
+        document.getElementById('time_left').innerHTML = "Time left: " + Math.round((end_ms - getms())/1000).toString() + "<br>";
+        if (errors) {
+            document.getElementById('errors').innerHTML = "Errors: "+errors + "<br>";
+        }
+    }, 1000);
+}
+
+</script>
+This tool checks for performance issues by issuing many small TCP requests. Excessive variation in response time is best detected when your connection is completely idle.
+<br>
+This is clone of <a href="http://www.dslreports.com/tools/puma6">dslreports.com</a>. It just connects to itself.
+<br>
+<br>
+Test time in seconds (min. 5 seconds):<br>
+<input id='duration' type="text" value="60"><br>
+
+Interval between tests in milliseconds (min. 20 milliseconds):<br>
+<input id='interval' type="text" value="100"><br>
+
+<button id='startbut' onClick='start(); return false;'>Start</button>
+<button id='stopbut' onClick='stop(); return false'>Stop</button>
+
+<br><br>
+<span id=samples></span>
+<span id=time_left></span>
+<span id=errors></span>
+
+<div id='scatter' style='font-size:10px;line-height:0.9em;font-family:courier; padding:1em; margin-top:1em'><br>
+</div>
+<div style='clear:both;'></div>
+</div></TD></TR></TABLE>
