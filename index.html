@@ -110,26 +110,36 @@ function start() {
         xhr.ms = getms();
         xhr.seq = sequence++;
         sequencer.push(0);
-        xhr.open("GET", "/puma.txt?"+Math.random());
+        xhr.open("GET", "/puma.csv?"+Math.random());
         xhr.onreadystatechange = function() {
-            if (xhr.readyState && xhr.readyState == 4 && (xhr.status == 404 || xhr.status == 200)) {
-                var ms = getms() - xhr.ms;
-                sequencer[xhr.seq] = ms;
-                if (ms > 100) {
-                    var i = 100;
-                    while(ms > 150) {
-                        i++;
-                        ms -= 50;
-                    }
-                    ms = i;
+            if (xhr.readyState != 4)
+                return;
+            if (xhr.status != 200)
+                return;
+            if (xhr.getResponseHeader("CF-Cache-Status") != 'HIT') {
+                // a few first ones is not an error, as we want cache to be hot
+                if (xhr.seq > 5) {
+                    errors++;
                 }
-                if (minms > ms)
-                    minms = ms;
-                if (samples>5) {
-                    bucket[ms]++;
-                }
-                samples++;
+                return;
             }
+
+            var ms = getms() - xhr.ms;
+            sequencer[xhr.seq] = ms;
+            if (ms > 100) {
+                var i = 100;
+                while(ms > 150) {
+                    i++;
+                    ms -= 50;
+                }
+                ms = i;
+            }
+            if (minms > ms)
+                minms = ms;
+            if (samples>5) {
+                bucket[ms]++;
+            }
+            samples++;
         }
         xhr.onerror = function() {
             errors++;
