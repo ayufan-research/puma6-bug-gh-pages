@@ -20,6 +20,9 @@ var sequence;
 var i1, i2;
 var start_ms;
 var errors;
+    
+var test_url = "https://nazwa.pl/favicon.ico";
+var require_cf = false;
 
 function stop() {
     clearInterval(i1);
@@ -110,13 +113,13 @@ function start() {
         xhr.ms = getms();
         xhr.seq = sequence++;
         sequencer.push(0);
-        xhr.open("GET", "/puma.csv?"+Math.random());
+        xhr.open("GET", test_url + "?" + Math.random());
         xhr.onreadystatechange = function() {
             if (xhr.readyState != 4)
                 return;
             if (xhr.status != 200)
                 return;
-            if (xhr.getResponseHeader("CF-Cache-Status") != 'HIT') {
+            if (require_cf && xhr.getResponseHeader("CF-Cache-Status") != 'HIT') {
                 // a few first ones is not an error, as we want cache to be hot
                 if (xhr.seq > 5) {
                     errors++;
